@@ -42,35 +42,35 @@ static struct file_operations fops = {
 /*
 ** This function will be called when we open the Device file
 */
-static int etx_open(struct inode *inode, struct file *file) {
+static int etx_open(struct inode *inode, struct file *filep) {
     /** pr_info("etx_open called on %s\n", file->f_path.dentry->d_name.name); */
-    pr_info("etx_open called on %s\n", D_NAME(file));
+    pr_info("etx_open called on %s\n", D_NAME(filep));
     return 0;
 }
 
 /*
 ** This function will be called when we close the Device file
 */
-static int etx_release(struct inode *inode, struct file *file) {
-    pr_info("etx_release called\n");
+static int etx_release(struct inode *inode, struct file *filep) {
+    pr_info("etx_release called on %s\n", D_NAME(filep));
     return 0;
 }
 
 /*
 ** This function will be called when we read the Device file
 */
-static ssize_t etx_read(struct file *filp, char __user *buf, size_t len,
+static ssize_t etx_read(struct file *filep, char __user *buf, size_t len,
                         loff_t *off) {
-    pr_info("etx_read called\n");
+    pr_info("etx_read called on %s\n", D_NAME(filep));
     return 0;
 }
 
 /*
 ** This function will be called when we write the Device file
 */
-static ssize_t etx_write(struct file *filp, const char __user *buf, size_t len,
+static ssize_t etx_write(struct file *filep, const char __user *buf, size_t len,
                          loff_t *off) {
-    pr_info("etx_write called\n");
+    pr_info("etx_write called on %s\n", D_NAME(filep));
     return len;
 }
 
