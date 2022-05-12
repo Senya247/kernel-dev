@@ -35,6 +35,7 @@ modules.builtin
 *.gcno
 
 *.vim
+*.out
 
 #
 # Top-level generic files
