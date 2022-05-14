@@ -13,6 +13,9 @@
 #define SSA_NUM_DEVS (2)
 #define SSA_BUF_SZE (6)
 
+/* Size of buffer used in copy_to_user and copy_from_user */
+#define SSA_CPY_BUF_SZE (2048)
+
 #define D_NAME(STRUCT_FILE) ((STRUCT_FILE)->f_path.dentry->d_name.name)
 
 int ssa_nr_devs = SSA_NUM_DEVS;
@@ -70,28 +73,36 @@ static ssize_t ssa_read(struct file *filep, char __user *buf, size_t len,
                         loff_t *off) {
     pr_info("ssa_read called on %s\n", D_NAME(filep));
     ssize_t retval = 0;
-    unsigned long to_write;
-    off_t buf_off = *off;
+    ssize_t cpy_buf_sze = SSA_CPY_BUF_SZE < len ? SSA_CPY_BUF_SZE : len;
+    char *cpy_buf = kmalloc(cpy_buf_sze, GFP_KERNEL);
+    char *cpy_buf_end = cpy_buf + cpy_buf_sze;
 
-    while (len) {
-        if (buf_off >= SSA_BUF_SZE)
-            buf_off = buf_off % SSA_BUF_SZE;
+    char *curr;
+    while (len >= cpy_buf_sze) {
+        /* Fill buffer */
+        curr = cpy_buf;
+        while (curr + SSA_BUF_SZE < cpy_buf_end) {
+            memcpy(curr, ssa_buf, SSA_BUF_SZE);
+            curr += SSA_BUF_SZE;
+        }
+        memcpy(curr, ssa_buf, (unsigned int)(cpy_buf_end - curr));
 
-        to_write =
-            (SSA_BUF_SZE - buf_off) < len ? (SSA_BUF_SZE - buf_off) : len;
-        if (copy_to_user(buf + *off, ssa_buf + buf_off, to_write)) {
+        /* Send to userspace */
+        if (copy_to_user(buf + *off, cpy_buf,
+                         cpy_buf_sze < len ? cpy_buf_sze : len)) {
             retval = -EFAULT;
             goto out;
         }
-
-        len -= to_write;
-        retval += to_write;
-        *off += to_write;
-        buf_off += to_write;
-        /** pr_info("len: %zu, off: %lld, to_write: %lu\n", len, *off,
-         * to_write); */
+        len -= cpy_buf_sze;
+        *off += cpy_buf_sze;
+        retval += cpy_buf_sze;
     }
+    /** Copy remaining data  */
+    copy_to_user(buf + *off, cpy_buf, len);
+    retval += len;
+    len = 0; /** Useless ig */
 out:
+    kfree(cpy_buf);
     return retval;
 }
 

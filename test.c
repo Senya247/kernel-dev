@@ -3,7 +3,7 @@
 #include <unistd.h>
 
 #define BUF_SZE 2048
-#define RD_SZE 20
+#define RD_SZE 200
 
 const char *dev_name = "/dev/koolchardrv0";
 
