@@ -32,6 +32,12 @@ struct ssa_dev *ssa_devices;
 static int ssa_open(struct inode *inode, struct file *filep) {
     /** pr_info("ssa_open called on %s\n", file->f_path.dentry->d_name.name); */
     pr_info("ssa_open called on %s\n", D_NAME(filep));
+    struct ssa_dev *s_dev;
+
+    /* To identify later on which device(ssa0, ssa1 etc) is being used */
+    s_dev = container_of(inode->i_cdev, struct ssa_dev, cdev);
+    filep->private_data = s_dev;
+
     return 0;
 }
 
@@ -40,6 +46,9 @@ static int ssa_open(struct inode *inode, struct file *filep) {
 */
 static int ssa_release(struct inode *inode, struct file *filep) {
     pr_info("ssa_release called on %s\n\n", D_NAME(filep));
+
+    filep->private_data = NULL;
+
     return 0;
 }
 
@@ -47,10 +56,7 @@ static int ssa_release(struct inode *inode, struct file *filep) {
 ** This function will be called when we read the Device file
 */
 static ssize_t ssa_read(struct file *filep, char __user *buf, size_t len,
-                        loff_t *off) {
-    pr_info("ssa_read called on %s\n", D_NAME(filep));
-    return 0;
-}
+                        loff_t *off) {}
 
 /*
 ** This function will be called when we write the Device file
@@ -58,7 +64,51 @@ static ssize_t ssa_read(struct file *filep, char __user *buf, size_t len,
 static ssize_t ssa_write(struct file *filep, const char __user *buf, size_t len,
                          loff_t *off) {
     pr_info("ssa_write called on %s\n", D_NAME(filep));
-    return 0;
+    ssize_t ret = 0;
+    struct ssa_dev *s_dev;
+    char *buffer;
+
+    s_dev = filep->private_data;
+    if (*off >= s_dev->l1_sze * s_dev->l2_sze) {
+        goto fin;
+    }
+
+    buffer = kmalloc(len, GFP_KERNEL);
+    if (!buffer) {
+        ret = -ENOMEM;
+        goto fin;
+    }
+    if (copy_from_user(buffer, buf, len)) {
+        ret = -EFAULT;
+        goto fin;
+    }
+
+    size_t l2_off, to_copy, cur_index;
+
+    cur_index = *off / s_dev->l2_sze;
+    char *cur = s_dev->data[cur_index];
+
+    /* Loop until either all the data is copied or no space is left */
+    while ((ret < len) && (cur_index != s_dev->l1_sze)) {
+        if (cur == NULL)
+            cur = kmalloc(s_dev->l2_sze, GFP_KERNEL);
+        l2_off = *off % s_dev->l2_sze;
+        to_copy = s_dev->l2_sze - l2_off;
+        to_copy = to_copy < (len - ret) ? to_copy : (len - ret);
+
+        memcpy(cur + l2_off, buffer + ret, to_copy);
+        pr_info("Copied %*.*s, to_copy: %ld\n", to_copy, to_copy, cur + l2_off,
+                to_copy);
+
+        *off += to_copy;
+        ret += to_copy;
+        cur_index++;
+    }
+
+fin:
+    pr_info("ret: %ld\n", ret);
+    kfree(buffer);
+    return ret;
 }
 
 /** File operations */
@@ -123,6 +173,7 @@ static int ssa_devices_init(void) {
                       "ssa%d", i);
 
         pr_info("setting buffer sizes and mallocing l1\n");
+        s_dev->index = i;
         s_dev->l1_sze = SSA_L1_SZE;
         s_dev->l2_sze = SSA_L2_SZE;
         s_dev->data = kmalloc(s_dev->l1_sze * sizeof(char *),
@@ -177,24 +228,28 @@ static int __init ssa_load(void) {
 
     pr_info("Loaded ssa\n");
     return 0;
+
 fail:
     return result;
 }
 
-/*
-** Module exit function
-*/
 static void __exit ssa_unload(void) {
-    int i;
+    int i, j;
+    struct ssa_dev *s_dev;
     for (i = 0; i < ssa_nr_devs; i++) {
-        pr_info("destroying device\n");
+        s_dev = &ssa_devices[i];
+        for (j = 0; j < s_dev->l1_sze; j++) {
+            /* if one is not malloced yet, all the others after aren't malloced
+             * either */
+            if (!s_dev->data[j])
+                continue;
+            kfree(s_dev->data[j]);
+        }
+        kfree(s_dev->data);
+
         device_destroy(ssa_class, MKDEV(ssa_major, ssa_minor + i));
 
-        pr_info("deleting cdev\n");
-        cdev_del(&ssa_devices[i].cdev);
-
-        pr_info("freeing data of ssa%d\n", i);
-        kfree(ssa_devices[i].data);
+        cdev_del(&s_dev->cdev);
     }
     pr_info("unregistering class\n");
     class_unregister(ssa_class);
