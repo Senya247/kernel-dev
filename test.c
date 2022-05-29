@@ -26,11 +26,12 @@ int main(int argc, char *argv[]) {
     switch (argv[1][0]) {
     case 'r':
         if (argc >= 3) {
-            if (!(num = atoi(argv[3]))) {
+            if (!(num = atoi(argv[2]))) {
                 fprintf(stderr, "Invalid size\n");
                 goto fin;
             }
         }
+        printf("num: %lu\n", num);
         buffer = malloc(num * sizeof(char));
         copied = read(fd, buffer, num);
 

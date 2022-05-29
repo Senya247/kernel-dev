@@ -56,7 +56,57 @@ static int ssa_release(struct inode *inode, struct file *filep) {
 ** This function will be called when we read the Device file
 */
 static ssize_t ssa_read(struct file *filep, char __user *buf, size_t len,
-                        loff_t *off) {}
+                        loff_t *off) {
+    pr_info("ssa_read called on %s\n", D_NAME(filep));
+    ssize_t ret = 0;
+    struct ssa_dev *s_dev;
+    char *buffer;
+
+    s_dev = filep->private_data;
+    if (!s_dev)
+        goto fin;
+
+    if (*off >= s_dev->l1_sze * s_dev->l2_sze) {
+        goto fin;
+    }
+
+    buffer = kmalloc(len, GFP_KERNEL);
+    if (!buffer) {
+        ret = -ENOMEM;
+        goto fin;
+    }
+
+    size_t l2_off, to_copy, cur_index;
+
+    cur_index = *off / s_dev->l2_sze;
+    char *cur; /* Doesn't need to be double pointer
+                                           like in ssa_write */
+    /* Loop until either all the data is copied or no space is left */
+    while ((ret < len) && (cur_index != s_dev->l1_sze)) {
+        cur = s_dev->data[cur_index];
+        if (!cur[cur_index])
+            goto fin;
+
+        l2_off = *off % s_dev->l2_sze;
+        to_copy = s_dev->l2_sze - l2_off;
+        to_copy = to_copy < (len - ret) ? to_copy : (len - ret);
+
+        memcpy(buffer + ret, cur + l2_off, to_copy);
+
+        *off += to_copy;
+        ret += to_copy;
+        cur_index++;
+    }
+
+    if (copy_to_user(buf, buffer, ret)) {
+        ret = -EFAULT;
+        goto fin;
+    }
+
+fin:
+    kfree(buffer);
+    return ret;
+}
 
 /*
 ** This function will be called when we write the Device file
@@ -86,27 +136,35 @@ static ssize_t ssa_write(struct file *filep, const char __user *buf, size_t len,
     size_t l2_off, to_copy, cur_index;
 
     cur_index = *off / s_dev->l2_sze;
-    char *cur = s_dev->data[cur_index];
+    char **cur; /* pointer to s_dev->data[i], which is a char * */
 
     /* Loop until either all the data is copied or no space is left */
     while ((ret < len) && (cur_index != s_dev->l1_sze)) {
-        if (cur == NULL)
-            cur = kmalloc(s_dev->l2_sze, GFP_KERNEL);
+        cur = &s_dev->data[cur_index];
+        /* pr_info("cur_index %ld\n", cur_index); */
+        if (*cur == NULL) {
+            /* pr_info("data[%ld] was null, mallocing\n", cur_index); */
+            *cur = kmalloc(s_dev->l2_sze, GFP_KERNEL);
+            if (*cur == NULL)
+                pr_info("data[%ld] IS STILL NULLL HELPP\n", cur_index);
+        }
+        /* pr_info("address of data[%ld] %p\n", cur_index, *cur); */
         l2_off = *off % s_dev->l2_sze;
         to_copy = s_dev->l2_sze - l2_off;
         to_copy = to_copy < (len - ret) ? to_copy : (len - ret);
 
-        memcpy(cur + l2_off, buffer + ret, to_copy);
-        pr_info("Copied %*.*s, to_copy: %ld\n", to_copy, to_copy, cur + l2_off,
-                to_copy);
+        pr_info("off: %lld, to_copy: %ld, len: %ld\n", *off, to_copy, len);
+        memcpy(*cur + l2_off, buffer + ret, to_copy);
+        /* pr_info("%p, %p\n", cur, &s_dev->data[cur_index]); */
 
         *off += to_copy;
         ret += to_copy;
         cur_index++;
     }
 
+    /* pr_info("address of data[0] %p\n", s_dev->data[0]); */
 fin:
-    pr_info("ret: %ld\n", ret);
+    /* pr_info("\n\n"); */
     kfree(buffer);
     return ret;
 }
@@ -180,6 +238,8 @@ static int ssa_devices_init(void) {
                               GFP_KERNEL); /** L2 is malloced only when it is
                                               needed by a userspace program */
 
+        if (s_dev->data == NULL)
+            pr_info("bruh we are fucked\n");
         /* Data was memsetted to 0 */
         if (!s_dev->data)
             return -ENOMEM;
@@ -226,7 +286,7 @@ static int __init ssa_load(void) {
         goto fail;
     }
 
-    pr_info("Loaded ssa\n");
+    pr_info("Loaded ssa\n\n");
     return 0;
 
 fail:
@@ -257,7 +317,7 @@ static void __exit ssa_unload(void) {
     pr_info("destroying class\n");
     class_destroy(ssa_class);
     unregister_chrdev_region(ssa_dev, ssa_nr_devs);
-    pr_info("Unloaded ssa\n");
+    pr_info("Unloaded ssa\n\n");
 }
 
 module_init(ssa_load);

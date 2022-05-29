@@ -31,11 +31,11 @@ static ssize_t ssa_read(struct file *filp, char __user *buf, size_t len,
 static ssize_t ssa_write(struct file *filp, const char *buf, size_t len,
                          loff_t *off); */
 #ifndef SSA_L2_SZE
-#define SSA_L2_SZE 8
+#define SSA_L2_SZE 512
 #endif
 
 #ifndef SSA_L1_SZE
-#define SSA_L1_SZE 8
+#define SSA_L1_SZE 16
 #endif
 
 #endif /* SSA_H */
