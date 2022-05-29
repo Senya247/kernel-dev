@@ -63,12 +63,11 @@ static ssize_t ssa_read(struct file *filep, char __user *buf, size_t len,
     char *buffer;
 
     s_dev = filep->private_data;
-    if (!s_dev)
-        goto fin;
 
-    if (*off >= s_dev->l1_sze * s_dev->l2_sze) {
+    if (*off >= s_dev->end) {
         goto fin;
     }
+    len = s_dev->end > *off + len ? len : s_dev->end - *off;
 
     buffer = kmalloc(len, GFP_KERNEL);
     if (!buffer) {
@@ -166,6 +165,8 @@ static ssize_t ssa_write(struct file *filep, const char __user *buf, size_t len,
 fin:
     /* pr_info("\n\n"); */
     kfree(buffer);
+    s_dev->end += ret;
+    pr_info("end = %ld, ret = %ld\n", s_dev->end, ret);
     return ret;
 }
 
@@ -232,6 +233,7 @@ static int ssa_devices_init(void) {
 
         pr_info("setting buffer sizes and mallocing l1\n");
         s_dev->index = i;
+        s_dev->end = 0;
         s_dev->l1_sze = SSA_L1_SZE;
         s_dev->l2_sze = SSA_L2_SZE;
         s_dev->data = kmalloc(s_dev->l1_sze * sizeof(char *),

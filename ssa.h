@@ -10,6 +10,7 @@
 struct ssa_dev {
     char **data; /* Array to pointers of data, each of size l2_sze */
     int index;
+    size_t end; /* Location of last written data  */
 
     size_t l1_sze; /* Length of pointer pool */
     size_t l2_sze; /* Size of each block of data */
