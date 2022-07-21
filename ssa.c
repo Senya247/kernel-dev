@@ -30,7 +30,6 @@ struct ssa_dev *ssa_devices;
 ** This function will be called when we open the Device file
 */
 static int ssa_open(struct inode *inode, struct file *filep) {
-    /** pr_info("ssa_open called on %s\n", file->f_path.dentry->d_name.name); */
     pr_info("ssa_open called on %s\n", D_NAME(filep));
     struct ssa_dev *s_dev;
 
@@ -60,7 +59,7 @@ static ssize_t ssa_read(struct file *filep, char __user *buf, size_t len,
     pr_info("ssa_read called on %s\n", D_NAME(filep));
     ssize_t ret = 0;
     struct ssa_dev *s_dev;
-    char *buffer;
+    char *buffer = NULL;
 
     s_dev = filep->private_data;
 
@@ -81,6 +80,7 @@ static ssize_t ssa_read(struct file *filep, char __user *buf, size_t len,
     char *cur; /* Doesn't need to be double pointer
                                            like in ssa_write */
     /* Loop until either all the data is copied or no space is left */
+    pr_info("reached loop\n");
     while ((ret < len) && (cur_index != s_dev->l1_sze)) {
         cur = s_dev->data[cur_index];
         if (!cur[cur_index])
@@ -115,10 +115,11 @@ static ssize_t ssa_write(struct file *filep, const char __user *buf, size_t len,
     pr_info("ssa_write called on %s\n", D_NAME(filep));
     ssize_t ret = 0;
     struct ssa_dev *s_dev;
-    char *buffer;
+    char *buffer = NULL;
 
     s_dev = filep->private_data;
     if (*off >= s_dev->l1_sze * s_dev->l2_sze) {
+        ret = -ENOSPC;
         goto fin;
     }
 
@@ -144,8 +145,10 @@ static ssize_t ssa_write(struct file *filep, const char __user *buf, size_t len,
         if (*cur == NULL) {
             /* pr_info("data[%ld] was null, mallocing\n", cur_index); */
             *cur = kmalloc(s_dev->l2_sze, GFP_KERNEL);
-            if (*cur == NULL)
-                pr_info("data[%ld] IS STILL NULLL HELPP\n", cur_index);
+            if (*cur == NULL) {
+                ret = -ENOMEM;
+                goto fin;
+            }
         }
         /* pr_info("address of data[%ld] %p\n", cur_index, *cur); */
         l2_off = *off % s_dev->l2_sze;

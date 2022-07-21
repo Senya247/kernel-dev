@@ -37,6 +37,7 @@ modules.builtin
 *.vim
 *.out
 ssa_rwtest
+compile_commands.json
 
 #
 # Top-level generic files
